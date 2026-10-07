@@ -147,6 +147,18 @@ class SpectralClustering(Clusterer):
         )
 
     def _affinity_matrix(self, x: np.ndarray) -> np.ndarray:
+        assert isinstance(x, np.ndarray), "Parametr 'x' musí být typu np.ndarray."
+        assert x.ndim == 2, "Matice 'x' musí být 2D (n_vzorků x n_příznaků)."
+
+        n = x.shape[0]
+        w = np.zeros((n, n))
+
+        for i in range(n):
+            for j in range(n):
+                d = self.distance.calculate(x[i], x[j])
+                w[i, j] = np.exp(-(d ** 2) / (2 * self.sigma ** 2))
+
+        return w
         """
         Sestaví afinitní matici (matici podobnosti) o rozměru (n, n).
 
@@ -184,6 +196,14 @@ class SpectralClustering(Clusterer):
         )
 
     def _laplacian(self, w: np.ndarray) -> np.ndarray:
+        assert w.ndim == 2 and w.shape[0] == w.shape[1], "Matice 'w' musí být čtvercová."
+        assert np.allclose(w, w.T), "Matice 'w' musí být symetrická."
+
+        d_diag = np.sum(w, axis=1)
+        d = np.diag(d_diag)
+        l = d - w
+
+        return l
         """
         Sestaví nenormalizovaný Laplacián grafu L = D - W.
 
@@ -219,6 +239,15 @@ class SpectralClustering(Clusterer):
         )
 
     def _spectral_embedding(self, l: np.ndarray, k: int) -> Tuple[np.ndarray, np.ndarray]:
+        assert l.ndim == 2 and l.shape[0] == l.shape[1], "Matice 'l' musí být čtvercová."
+
+        # np.linalg.eigh vrací vlastní čísla vždy seřazená vzestupně
+        eigvals, eigvecs = np.linalg.eigh(l)
+
+        # Výběr k vlastních vektorů odpovídajících k nejmenším vlastním číslům
+        embedding = eigvecs[:, :k]
+
+        return embedding, eigvals
         """
         Vypočítá spektrální embedding dat z Laplaciánu L.
 

@@ -97,6 +97,16 @@ class DBSCAN(Clusterer):
         self.labels_: Optional[np.ndarray] = None
 
     def _region_query(self, x: np.ndarray, point_idx: int, eps: float) -> list[int]:
+        assert isinstance(x, np.ndarray), "Parametr 'x' musí být typu np.ndarray."
+        assert x.ndim == 2, "Matice 'x' musí být 2D."
+        assert 0 <= point_idx < x.shape[0], "Neplatný index 'point_idx'."
+
+        neighbors = []
+        for i in range(x.shape[0]):
+            if self.distance.calculate(x[point_idx], x[i]) <= eps:
+                neighbors.append(i)
+
+        return neighbors
         """
         Najde eps-okolí bodu x[point_idx].
 
@@ -130,6 +140,73 @@ class DBSCAN(Clusterer):
         )
 
     def fit(self, x: np.ndarray) -> "DBSCAN":
+        assert isinstance(x, np.ndarray), "Parametr 'x' musí být typu np.ndarray."
+        assert x.ndim == 2, "Matice 'x' musí být 2D (n_vzorků x n_příznaků)."
+
+        n_samples = x.shape[0]
+        # 1. Pole štítků (start: vše šum -1) a evidence navštívených bodů
+        self.labels_ = np.full(n_samples, -1, dtype=int)
+        visited = np.zeros(n_samples, dtype=bool)
+
+        cluster_id = 0
+
+        # 2. Pro každý dosud nenavštívený bod i:
+        for i in range(n_samples):
+            if visited[i]:
+                continue
+
+            # a. označte i jako navštívený
+            visited[i] = True
+
+            # b. vyhledejte sousedy
+            neighbors = self._region_query(x, i, self.eps)
+
+            # c. kontrola na šum / hraniční bod
+            if len(neighbors) < self.min_samples:
+                # Zůstává jako šum (štítek -1), později může být zařazen jako hraniční bod
+                continue
+
+            # d. i je jádrový bod — založte nový shluk a expandujte ho
+            self.labels_[i] = cluster_id
+
+            # Inicializace fronty pro expanzi shluku
+            seed_set = neighbors.copy()
+            in_seed = np.zeros(n_samples, dtype=bool)
+            for n in seed_set:
+                in_seed[n] = True
+
+            # Odstraníme z fronty samotný výchozí bod (už byl zpracován)
+            if in_seed[i]:
+                seed_set.remove(i)
+                in_seed[i] = False
+
+            # Procházení fronty k prozkoumání (BFS expanze)
+            j = 0
+            while j < len(seed_set):
+                current_p = seed_set[j]
+
+                if not visited[current_p]:
+                    visited[current_p] = True
+                    current_neighbors = self._region_query(x, current_p, self.eps)
+
+                    # Pokud je bod v seed_set také jádrový, přidáme jeho sousedy
+                    if len(current_neighbors) >= self.min_samples:
+                        for n in current_neighbors:
+                            if not in_seed[n]:
+                                seed_set.append(n)
+                                in_seed[n] = True
+
+                # Pokud bod zatím nemá přiřazený shluk (byl původně vyhodnocen jako šum)
+                if self.labels_[current_p] == -1:
+                    self.labels_[current_p] = cluster_id
+
+                j += 1
+
+            # Expanze aktuálního shluku byla dokončena, navyšujeme ID pro další shluk
+            cluster_id += 1
+
+        # 3. Vrátíme instanci
+        return self
         """
         Natrénuje DBSCAN na datech x a uloží výsledné štítky shluků do
         self.labels_.
